@@ -1,4 +1,5 @@
 import os
+import subprocess
 import tempfile
 import cv2
 import numpy as np
@@ -54,93 +55,117 @@ st.write(
 st.sidebar.header("Model Settings")
 conf_thresh = st.sidebar.slider("Confidence Threshold", 0.1, 1.0, 0.25, 0.05)
 
-# Separate Tabs Navigation
+# Reordered Tabs Navigation: 3D View First
 tab1, tab2, tab3 = st.tabs(
-    ["📷 Image Detection", "🎥 Video Detection", "🧊 3D EV Perception View"]
+    ["🧊 3D EV Perception View", "📷 Image Detection", "🎥 Video Detection"]
 )
 
-# ----------------- TAB 1: IMAGE DETECTION -----------------
+
+def create_vehicle_mesh(x_center, y_center, z_center, color, name):
+    """Generates 3D box meshes representing detailed vehicle body & roof."""
+    # Base Dimensions
+    w, l, h = 1.8, 4.0, 1.2
+
+    # Lower Chassis Vertices
+    x = [
+        x_center - w / 2,
+        x_center + w / 2,
+        x_center + w / 2,
+        x_center - w / 2,
+        x_center - w / 2,
+        x_center + w / 2,
+        x_center + w / 2,
+        x_center - w / 2,
+    ]
+    y = [
+        y_center - l / 2,
+        y_center - l / 2,
+        y_center + l / 2,
+        y_center + l / 2,
+        y_center - l / 2,
+        y_center - l / 2,
+        y_center + l / 2,
+        y_center + l / 2,
+    ]
+    z = [
+        z_center,
+        z_center,
+        z_center,
+        z_center,
+        z_center + h,
+        z_center + h,
+        z_center + h,
+        z_center + h,
+    ]
+
+    i = [7, 0, 0, 0, 4, 4, 6, 6, 4, 0, 3, 2]
+    j = [3, 4, 1, 2, 5, 6, 5, 2, 0, 1, 6, 3]
+    k = [0, 7, 2, 3, 6, 7, 1, 1, 5, 5, 7, 6]
+
+    mesh_body = go.Mesh3d(
+        x=x,
+        y=y,
+        z=z,
+        i=i,
+        j=j,
+        k=k,
+        color=color,
+        opacity=0.9,
+        name=name,
+        flatshading=True,
+    )
+
+    # Upper Cabin/Roof Vertices
+    rw, rl, rh = 1.4, 2.0, 0.8
+    rx = [
+        x_center - rw / 2,
+        x_center + rw / 2,
+        x_center + rw / 2,
+        x_center - rw / 2,
+        x_center - rw / 2,
+        x_center + rw / 2,
+        x_center + rw / 2,
+        x_center - rw / 2,
+    ]
+    ry = [
+        y_center - rl / 2,
+        y_center - rl / 2,
+        y_center + rl / 2,
+        y_center + rl / 2,
+        y_center - rl / 2,
+        y_center - rl / 2,
+        y_center + rl / 2,
+        y_center + rl / 2,
+    ]
+    rz = [
+        z_center + h,
+        z_center + h,
+        z_center + h,
+        z_center + h,
+        z_center + h + rh,
+        z_center + h + rh,
+        z_center + h + rh,
+        z_center + h + rh,
+    ]
+
+    mesh_roof = go.Mesh3d(
+        x=rx,
+        y=ry,
+        z=rz,
+        i=i,
+        j=j,
+        k=k,
+        color="#222222",
+        opacity=0.8,
+        showlegend=False,
+        flatshading=True,
+    )
+
+    return [mesh_body, mesh_roof]
+
+
+# ----------------- TAB 1: 3D EV PERCEPTION VIEW (FIRST TAB) -----------------
 with tab1:
-    st.markdown("### 📷 Road Image Boundary Detection")
-    uploaded_image = st.file_uploader(
-        "Choose a road photo...", type=["jpg", "jpeg", "png"], key="img_upload"
-    )
-
-    if uploaded_image is not None:
-        image = Image.open(uploaded_image)
-        col1, col2 = st.columns(2)
-        with col1:
-            st.markdown("**Original Input**")
-            st.image(image, use_container_width=True)
-
-        if st.button("Run Image Boundary Detection", key="btn_img"):
-            msg_img = (
-                "⏳ Processing road boundaries... Please be patient, it will upload soon! "
-                "Meanwhile, check out our interactive 3D Perception View in Tab 3 above! 🚘"
-            )
-            with st.spinner(msg_img):
-                results = model.predict(source=image, conf=conf_thresh)
-                res_plotted = results[0].plot()
-                with col2:
-                    st.markdown("**Processed Boundary Output**")
-                    st.image(
-                        res_plotted[..., ::-1], use_container_width=True
-                    )
-
-# ----------------- TAB 2: VIDEO DETECTION -----------------
-with tab2:
-    st.markdown("### 🎥 Road Driving Video Inference")
-    uploaded_video = st.file_uploader(
-        "Upload Road Driving Video", type=["mp4", "avi", "mov"], key="vid_upload"
-    )
-
-    if uploaded_video is not None:
-        st.video(uploaded_video)
-
-        if st.button("Run Video Detection", key="btn_vid"):
-            msg_vid = (
-                "⏳ Processing video frames... Please be patient, it will upload soon! "
-                "Meanwhile, check out our interactive 3D Perception View in Tab 3 above! 🎥"
-            )
-            with st.spinner(msg_vid):
-                tfile = tempfile.NamedTemporaryFile(delete=False, suffix=".mp4")
-                tfile.write(uploaded_video.read())
-
-                cap = cv2.VideoCapture(tfile.name)
-                width = int(cap.get(cv2.CAP_PROP_FRAME_WIDTH))
-                height = int(cap.get(cv2.CAP_PROP_FRAME_HEIGHT))
-                fps = cap.get(cv2.CAP_PROP_FPS)
-
-                raw_output_path = "temp_raw_output.mp4"
-                web_output_path = "processed_output.mp4"
-
-                fourcc = cv2.VideoWriter_fourcc(*"mp4v")
-                out = cv2.VideoWriter(
-                    raw_output_path, fourcc, fps, (width, height)
-                )
-
-                while cap.isOpened():
-                    ret, frame = cap.read()
-                    if not ret:
-                        break
-                    results = model.predict(
-                        source=frame, conf=conf_thresh, verbose=False
-                    )
-                    out.write(results[0].plot())
-
-                cap.release()
-                out.release()
-
-                # Convert raw OpenCV video to H.264 format for web browser rendering
-                os.system(
-                    f"ffmpeg -y -i {raw_output_path} -vcodec libx264 {web_output_path}"
-                )
-
-                st.success("Video processing complete!")
-                st.video(web_output_path)
-
-# ----------------- TAB 3: 3D EV PERCEPTION VIEW -----------------
-with tab3:
     st.markdown("### 🧊 Live 3D Autonomous EV Navigation View")
 
     ev_speed = st.slider(
@@ -204,33 +229,26 @@ with tab3:
         )
     )
 
-    # Ego EV Position
-    fig.add_trace(
-        go.Scatter3d(
-            x=[0],
-            y=[ev_speed],
-            z=[0.8],
-            mode="markers+text",
-            marker=dict(size=16, color="#00D2FF", symbol="square"),
-            text=["⚡ Ego EV"],
-            textposition="top center",
-            name="Host EV",
-        )
+    # Ego EV Position (Mesh Vehicle)
+    ego_traces = create_vehicle_mesh(
+        0, ev_speed, 0.1, "#00D2FF", "⚡ Ego EV (Host)"
     )
+    for trace in ego_traces:
+        fig.add_trace(trace)
 
-    # Surrounding Vehicles
-    fig.add_trace(
-        go.Scatter3d(
-            x=[-2, 2.2],
-            y=[ev_speed + 15, ev_speed + 30],
-            z=[0.8, 0.8],
-            mode="markers+text",
-            marker=dict(size=13, color="#FF9900", symbol="diamond"),
-            text=["Vehicle 1", "Vehicle 2"],
-            textposition="top center",
-            name="Ahead Traffic",
-        )
+    # Surrounding Vehicle 1 (Ahead Left Lane)
+    v1_traces = create_vehicle_mesh(
+        -2.2, ev_speed + 18, 0.1, "#FF9900", "🚘 Ahead Vehicle 1"
     )
+    for trace in v1_traces:
+        fig.add_trace(trace)
+
+    # Surrounding Vehicle 2 (Ahead Right Lane)
+    v2_traces = create_vehicle_mesh(
+        2.2, ev_speed + 32, 0.1, "#00FF66", "🚘 Ahead Vehicle 2"
+    )
+    for trace in v2_traces:
+        fig.add_trace(trace)
 
     fig.update_layout(
         scene=dict(
@@ -241,8 +259,82 @@ with tab3:
             camera=dict(eye=dict(x=0, y=-1.3, z=1.1)),
         ),
         paper_bgcolor="#0E1117",
-        height=500,
+        height=550,
         margin=dict(l=0, r=0, b=0, t=20),
     )
 
     st.plotly_chart(fig, use_container_width=True)
+
+# ----------------- TAB 2: IMAGE DETECTION -----------------
+with tab2:
+    st.markdown("### 📷 Road Image Boundary Detection")
+    uploaded_image = st.file_uploader(
+        "Choose a road photo...", type=["jpg", "jpeg", "png"], key="img_upload"
+    )
+
+    if uploaded_image is not None:
+        image = Image.open(uploaded_image)
+        col1, col2 = st.columns(2)
+        with col1:
+            st.markdown("**Original Input**")
+            st.image(image, use_container_width=True)
+
+        if st.button("Run Image Boundary Detection", key="btn_img"):
+            with st.spinner(
+                "⏳ Processing road boundaries... Please be patient, it will upload soon! Meanwhile, check out our interactive 3D Perception View in Tab 1 above! 🚘"
+            ):
+                results = model.predict(source=image, conf=conf_thresh)
+                res_plotted = results[0].plot()
+                with col2:
+                    st.markdown("**Processed Boundary Output**")
+                    st.image(
+                        res_plotted[..., ::-1], use_container_width=True
+                    )
+
+# ----------------- TAB 3: VIDEO DETECTION -----------------
+with tab3:
+    st.markdown("### 🎥 Road Driving Video Inference")
+    uploaded_video = st.file_uploader(
+        "Upload Road Driving Video", type=["mp4", "avi", "mov"], key="vid_upload"
+    )
+
+    if uploaded_video is not None:
+        st.video(uploaded_video)
+
+        if st.button("Run Video Detection", key="btn_vid"):
+            with st.spinner(
+                "⏳ Processing video frames... Please be patient, it will upload soon! Meanwhile, check out our interactive 3D Perception View in Tab 1 above! 🎥"
+            ):
+                tfile = tempfile.NamedTemporaryFile(delete=False, suffix=".mp4")
+                tfile.write(uploaded_video.read())
+
+                cap = cv2.VideoCapture(tfile.name)
+                width = int(cap.get(cv2.CAP_PROP_FRAME_WIDTH))
+                height = int(cap.get(cv2.CAP_PROP_FRAME_HEIGHT))
+                fps = cap.get(cv2.CAP_PROP_FPS)
+
+                raw_output_path = "temp_raw_output.mp4"
+                web_output_path = "processed_output.mp4"
+
+                fourcc = cv2.VideoWriter_fourcc(*"mp4v")
+                out = cv2.VideoWriter(
+                    raw_output_path, fourcc, fps, (width, height)
+                )
+
+                while cap.isOpened():
+                    ret, frame = cap.read()
+                    if not ret:
+                        break
+                    results = model.predict(
+                        source=frame, conf=conf_thresh, verbose=False
+                    )
+                    out.write(results[0].plot())
+
+                cap.release()
+                out.release()
+
+                cmd = f"ffmpeg -y -i {raw_output_path} -vcodec libx264 {web_output_path}"
+                subprocess.run(cmd, shell=True, check=True)
+
+                st.success("Video processing complete!")
+                st.video(web_output_path)
