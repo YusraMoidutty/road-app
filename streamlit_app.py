@@ -154,7 +154,7 @@ with tab3:
 
     fig = go.Figure()
 
-    # 1. Driveable Surface
+    # 1. Driveable Surface Ground Plane
     fig.add_trace(
         go.Surface(
             x=X,
@@ -200,35 +200,26 @@ with tab3:
         )
     )
 
-    # ----------------- REALISTIC 3D REAL CAR MAPPING -----------------
     cy = ev_speed  # Car Y position on road
 
-    # 3D Plane coordinates where the transparent EV image sits
-    car_x_plane = np.linspace(-1.5, 1.5, 2)
-    car_y_plane = np.array([cy - 2.5, cy + 2.5])
-    CX, CY = np.meshgrid(car_x_plane, car_y_plane)
-    CZ = np.array([[0.1, 0.1], [1.8, 1.8]])
-
-    # Electric Teal Car Texture map URL (or local path)
-    car_img_url = "https://i.imgur.com/2sR9W4m.png"
-
+    # 4. Host EV Marker Node (Position Reference)
     fig.add_trace(
-        go.Surface(
-            x=CX,
-            y=CY,
-            z=CZ,
-            surfacecolor=np.ones_like(CX),
-            colorscale=[[0, "#00D2FF"], [1, "#00D2FF"]],
-            showscale=False,
-            opacity=0.9,
-            name="Ego EV",
+        go.Scatter3d(
+            x=[0],
+            y=[cy],
+            z=[0.5],
+            mode="markers+text",
+            marker=dict(size=10, color="#00D2FF"),
+            text=["⚡ Ego EV"],
+            textposition="top center",
+            name="Ego EV Position",
         )
     )
 
-    # Sensor Light Beam Cones emitting forward from front bumper
-    sensor_x = [0, -3.5, 3.5, 0, -3.5, 0, 3.5]
-    sensor_y = [cy + 2.5, cy + 20, cy + 20, cy + 2.5, cy + 20, cy + 25, cy + 20]
-    sensor_z = [0.8, 0.1, 0.1, 0.8, 0.1, 0.1, 0.1]
+    # 5. Forward Sensing Radar Zone (Emitting directly from the EV node)
+    sensor_x = [0, -3.5, 3.5, 0]
+    sensor_y = [cy, cy + 20, cy + 20, cy]
+    sensor_z = [0.5, 0.1, 0.1, 0.5]
 
     fig.add_trace(
         go.Scatter3d(
@@ -241,19 +232,18 @@ with tab3:
         )
     )
 
-    # Fill Sensor FOV Field
     fig.add_trace(
         go.Mesh3d(
             x=[0, -3.5, 3.5],
-            y=[cy + 2.5, cy + 20, cy + 20],
-            z=[0.8, 0.1, 0.1],
+            y=[cy, cy + 20, cy + 20],
+            z=[0.5, 0.1, 0.1],
             color="#00FFFF",
-            opacity=0.25,
-            name="Detection Cone",
+            opacity=0.2,
+            name="Detection Field",
         )
     )
 
-    # 4. Surrounding Vehicles
+    # 6. Surrounding Vehicles
     fig.add_trace(
         go.Scatter3d(
             x=[-2, 2.2],
@@ -273,7 +263,7 @@ with tab3:
             yaxis=dict(title="Distance Ahead (m)", backgroundcolor="#0E1117"),
             zaxis=dict(title="Elevation (m)", backgroundcolor="#0E1117"),
             aspectratio=dict(x=1, y=2.5, z=0.5),
-            camera=dict(eye=dict(x=-1.2, y=-1.8, z=0.8)),
+            camera=dict(eye=dict(x=-0.8, y=-1.5, z=1.0)),
         ),
         paper_bgcolor="#0E1117",
         height=550,
