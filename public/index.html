@@ -1,0 +1,65 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Road Boundary Detection</title>
+  <style>
+    body { font-family: Arial, sans-serif; text-align: center; background: #0f172a; color: white; margin: 2rem; }
+    .container { max-width: 600px; margin: 0 auto; background: #1e293b; padding: 24px; border-radius: 12px; }
+    input, button { margin: 15px 0; padding: 10px 16px; border-radius: 6px; border: none; font-size: 1rem; }
+    button { background: #2563eb; color: white; cursor: pointer; font-weight: bold; }
+    button:hover { background: #1d4ed8; }
+    img { max-width: 100%; border-radius: 8px; margin-top: 15px; display: none; }
+    .loading { display: none; color: #94a3b8; font-style: italic; }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <h2>🛣️ Road Boundary Detection</h2>
+    <p>Upload a road image to highlight boundaries with YOLO.</p>
+    
+    <input type="file" id="upload" accept="image/*" />
+    <br/>
+    <button onclick="uploadImage()">Detect Boundaries</button>
+    
+    <div id="loading" class="loading">Processing image...</div>
+    <br/>
+    <img id="result" alt="Detected Road Boundaries" />
+  </div>
+
+  <script>
+    async function uploadImage() {
+      const fileInput = document.getElementById('upload');
+      const loadingDiv = document.getElementById('loading');
+      const img = document.getElementById('result');
+
+      if (!fileInput.files[0]) {
+        return alert("Please select an image file first.");
+      }
+
+      loadingDiv.style.display = 'block';
+      img.style.display = 'none';
+
+      const formData = new FormData();
+      formData.append('file', fileInput.files[0]);
+
+      try {
+        const response = await fetch('/api/detect', { method: 'POST', body: formData });
+        const data = await response.json();
+
+        if (data.image) {
+          img.src = data.image;
+          img.style.display = 'block';
+        } else {
+          alert("Detection failed: " + (data.error || "Unknown error"));
+        }
+      } catch (err) {
+        alert("Error connecting to backend server.");
+      } finally {
+        loadingDiv.style.display = 'none';
+      }
+    }
+  </script>
+</body>
+</html>
