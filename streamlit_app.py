@@ -200,66 +200,60 @@ with tab3:
         )
     )
 
-    # ----------------- 3D VEHICLE MESH CREATION -----------------
-    # Vehicle Dimensions
-    car_w = 1.0  # Half-width
-    car_l = 2.0  # Half-length
-    car_h = 1.2  # Height
-    cy = ev_speed  # Position along the road
+    # ----------------- REALISTIC 3D REAL CAR MAPPING -----------------
+    cy = ev_speed  # Car Y position on road
 
-    # 3D Mesh Vertices (Car Body + Cabin Shape)
-    v_x = [
-        -car_w, car_w, car_w, -car_w,            # Bottom corners: 0,1,2,3
-        -car_w, car_w, car_w, -car_w,            # Beltline (hood height): 4,5,6,7
-        -car_w * 0.8, car_w * 0.8, car_w * 0.8, -car_w * 0.8,  # Roof corners: 8,9,10,11
-    ]
+    # 3D Plane coordinates where the transparent EV image sits
+    car_x_plane = np.linspace(-1.5, 1.5, 2)
+    car_y_plane = np.array([cy - 2.5, cy + 2.5])
+    CX, CY = np.meshgrid(car_x_plane, car_y_plane)
+    CZ = np.array([[0.1, 0.1], [1.8, 1.8]])
 
-    v_y = [
-        cy - car_l, cy - car_l, cy + car_l, cy + car_l,  # Bottom corners
-        cy - car_l, cy - car_l, cy + car_l, cy + car_l,  # Beltline
-        cy - car_l * 0.3, cy - car_l * 0.3, cy + car_l * 0.5, cy + car_l * 0.5,  # Roof corners (tapered)
-    ]
+    # Electric Teal Car Texture map URL (or local path)
+    car_img_url = "https://i.imgur.com/2sR9W4m.png"
 
-    v_z = [
-        0.2, 0.2, 0.2, 0.2,  # Bottom elevation (above ground)
-        0.7, 0.7, 0.7, 0.7,  # Beltline height
-        car_h + 0.2, car_h + 0.2, car_h + 0.2, car_h + 0.2,  # Roof height
-    ]
-
-    # Triangular Mesh Indices defining 3D faces
-    i_faces = [0, 1, 0, 4, 1, 5, 2, 6, 3, 7, 4, 5, 4, 7, 6, 7, 4, 5, 5, 6, 6, 7, 7, 4]
-    j_faces = [1, 2, 4, 5, 5, 6, 6, 7, 7, 4, 5, 6, 7, 6, 5, 4, 8, 9, 9, 10, 10, 11, 11, 8]
-    k_faces = [2, 3, 1, 0, 2, 1, 3, 2, 0, 3, 6, 7, 6, 5, 4, 7, 9, 8, 10, 9, 11, 10, 8, 11]
-
-    # Add 3D EV Body
     fig.add_trace(
-        go.Mesh3d(
-            x=v_x,
-            y=v_y,
-            z=v_z,
-            i=i_faces,
-            j=j_faces,
-            k=k_faces,
-            color="#00D2FF",
-            opacity=0.85,
-            name="Host EV Chassis",
-            flatshading=True,
+        go.Surface(
+            x=CX,
+            y=CY,
+            z=CZ,
+            surfacecolor=np.ones_like(CX),
+            colorscale=[[0, "#00D2FF"], [1, "#00D2FF"]],
+            showscale=False,
+            opacity=0.9,
+            name="Ego EV",
         )
     )
 
-    # EV Headlight Beams (Perception Visualizer)
+    # Sensor Light Beam Cones emitting forward from front bumper
+    sensor_x = [0, -3.5, 3.5, 0, -3.5, 0, 3.5]
+    sensor_y = [cy + 2.5, cy + 20, cy + 20, cy + 2.5, cy + 20, cy + 25, cy + 20]
+    sensor_z = [0.8, 0.1, 0.1, 0.8, 0.1, 0.1, 0.1]
+
     fig.add_trace(
         go.Scatter3d(
-            x=[-0.6, -1.8, 0, 1.8, 0.6],
-            y=[cy + car_l, cy + car_l + 12, cy, cy + car_l + 12, cy + car_l],
-            z=[0.5, 0.1, 0.5, 0.1, 0.5],
+            x=sensor_x,
+            y=sensor_y,
+            z=sensor_z,
             mode="lines",
-            line=dict(color="#00FFFF", width=3),
+            line=dict(color="#00FFFF", width=4),
             name="Sensor Field",
         )
     )
 
-    # 4. Surrounding Vehicles (Ahead Traffic rendered as 3D outlines)
+    # Fill Sensor FOV Field
+    fig.add_trace(
+        go.Mesh3d(
+            x=[0, -3.5, 3.5],
+            y=[cy + 2.5, cy + 20, cy + 20],
+            z=[0.8, 0.1, 0.1],
+            color="#00FFFF",
+            opacity=0.25,
+            name="Detection Cone",
+        )
+    )
+
+    # 4. Surrounding Vehicles
     fig.add_trace(
         go.Scatter3d(
             x=[-2, 2.2],
@@ -279,7 +273,7 @@ with tab3:
             yaxis=dict(title="Distance Ahead (m)", backgroundcolor="#0E1117"),
             zaxis=dict(title="Elevation (m)", backgroundcolor="#0E1117"),
             aspectratio=dict(x=1, y=2.5, z=0.5),
-            camera=dict(eye=dict(x=-0.8, y=-1.5, z=1.0)),
+            camera=dict(eye=dict(x=-1.2, y=-1.8, z=0.8)),
         ),
         paper_bgcolor="#0E1117",
         height=550,
