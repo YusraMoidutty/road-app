@@ -1,7 +1,6 @@
 import os
 import subprocess
 import tempfile
-import time
 import cv2
 import numpy as np
 import plotly.graph_objects as go
@@ -56,245 +55,13 @@ st.write(
 st.sidebar.header("Model Settings")
 conf_thresh = st.sidebar.slider("Confidence Threshold", 0.1, 1.0, 0.25, 0.05)
 
-# Tabs Navigation
+# Separate Tabs Navigation
 tab1, tab2, tab3 = st.tabs(
-    ["🧊 3D EV Perception View", "📷 Image Detection", "🎥 Video Detection"]
+    ["📷 Image Detection", "🎥 Video Detection", "🧊 3D EV Perception View"]
 )
 
-
-def create_vehicle_mesh(x_center, y_center, z_center, color, name):
-    """Generates 3D box meshes representing detailed vehicle body & roof."""
-    w, l, h = 1.8, 4.0, 1.2
-
-    # Lower Chassis Vertices
-    x = [
-        x_center - w / 2,
-        x_center + w / 2,
-        x_center + w / 2,
-        x_center - w / 2,
-        x_center - w / 2,
-        x_center + w / 2,
-        x_center + w / 2,
-        x_center - w / 2,
-    ]
-    y = [
-        y_center - l / 2,
-        y_center - l / 2,
-        y_center + l / 2,
-        y_center + l / 2,
-        y_center - l / 2,
-        y_center - l / 2,
-        y_center + l / 2,
-        y_center + l / 2,
-    ]
-    z = [
-        z_center,
-        z_center,
-        z_center,
-        z_center,
-        z_center + h,
-        z_center + h,
-        z_center + h,
-        z_center + h,
-    ]
-
-    i = [7, 0, 0, 0, 4, 4, 6, 6, 4, 0, 3, 2]
-    j = [3, 4, 1, 2, 5, 6, 5, 2, 0, 1, 6, 3]
-    k = [0, 7, 2, 3, 6, 7, 1, 1, 5, 5, 7, 6]
-
-    mesh_body = go.Mesh3d(
-        x=x,
-        y=y,
-        z=z,
-        i=i,
-        j=j,
-        k=k,
-        color=color,
-        opacity=0.9,
-        name=name,
-        flatshading=True,
-    )
-
-    # Upper Cabin/Roof Vertices
-    rw, rl, rh = 1.4, 2.0, 0.8
-    rx = [
-        x_center - rw / 2,
-        x_center + rw / 2,
-        x_center + rw / 2,
-        x_center - rw / 2,
-        x_center - rw / 2,
-        x_center + rw / 2,
-        x_center + rw / 2,
-        x_center - rw / 2,
-    ]
-    ry = [
-        y_center - rl / 2,
-        y_center - rl / 2,
-        y_center + rl / 2,
-        y_center + rl / 2,
-        y_center - rl / 2,
-        y_center - rl / 2,
-        y_center + rl / 2,
-        y_center + rl / 2,
-    ]
-    rz = [
-        z_center + h,
-        z_center + h,
-        z_center + h,
-        z_center + h,
-        z_center + h + rh,
-        z_center + h + rh,
-        z_center + h + rh,
-        z_center + h + rh,
-    ]
-
-    mesh_roof = go.Mesh3d(
-        x=rx,
-        y=ry,
-        z=rz,
-        i=i,
-        j=j,
-        k=k,
-        color="#222222",
-        opacity=0.8,
-        showlegend=False,
-        flatshading=True,
-    )
-
-    return [mesh_body, mesh_roof]
-
-
-def build_3d_scene(pos_y):
-    """Generates the Plotly 3D Figure centered on the host vehicle at pos_y."""
-    x_road = np.linspace(-6, 6, 40)
-    y_road = np.linspace(0, 60, 60)
-    X, Y = np.meshgrid(x_road, y_road)
-    Z = np.zeros_like(X)
-
-    fig = go.Figure()
-
-    # Driveable Surface
-    fig.add_trace(
-        go.Surface(
-            x=X,
-            y=Y,
-            z=Z,
-            colorscale=[[0, "#12161f"], [1, "#1e2530"]],
-            showscale=False,
-        )
-    )
-
-    # Road Boundary Lines
-    y_line = np.linspace(0, 60, 60)
-    fig.add_trace(
-        go.Scatter3d(
-            x=[-4.5] * 60,
-            y=y_line,
-            z=[0.1] * 60,
-            mode="lines",
-            line=dict(color="#FF3366", width=8),
-            name="Left Boundary",
-        )
-    )
-    fig.add_trace(
-        go.Scatter3d(
-            x=[4.5] * 60,
-            y=y_line,
-            z=[0.1] * 60,
-            mode="lines",
-            line=dict(color="#FF3366", width=8),
-            name="Right Boundary",
-        )
-    )
-
-    # Center Lane Divider
-    fig.add_trace(
-        go.Scatter3d(
-            x=[0] * 60,
-            y=y_line,
-            z=[0.05] * 60,
-            mode="lines",
-            line=dict(color="#FFCC00", width=4, dash="dash"),
-            name="Center Lane",
-        )
-    )
-
-    # Ego Host EV (Cyan 3D Mesh)
-    ego_traces = create_vehicle_mesh(
-        0, pos_y, 0.1, "#00D2FF", "⚡ Ego EV (Host)"
-    )
-    for trace in ego_traces:
-        fig.add_trace(trace)
-
-    # Surrounding Traffic Vehicles
-    v1_traces = create_vehicle_mesh(
-        -2.2, pos_y + 16, 0.1, "#FF9900", "🚘 Traffic Car 1"
-    )
-    for trace in v1_traces:
-        fig.add_trace(trace)
-
-    v2_traces = create_vehicle_mesh(
-        2.2, pos_y + 28, 0.1, "#00FF66", "🚘 Traffic Car 2"
-    )
-    for trace in v2_traces:
-        fig.add_trace(trace)
-
-    # Centered Camera Angle
-    fig.update_layout(
-        scene=dict(
-            xaxis=dict(
-                title="Lateral (m)", range=[-6, 6], backgroundcolor="#0E1117"
-            ),
-            yaxis=dict(
-                title="Distance Ahead (m)",
-                range=[0, 60],
-                backgroundcolor="#0E1117",
-            ),
-            zaxis=dict(
-                title="Elevation (m)", range=[0, 8], backgroundcolor="#0E1117"
-            ),
-            aspectratio=dict(x=1, y=2.5, z=0.5),
-            camera=dict(
-                eye=dict(x=0, y=-1.8, z=1.4), center=dict(x=0, y=0.2, z=0)
-            ),
-        ),
-        paper_bgcolor="#0E1117",
-        height=550,
-        margin=dict(l=0, r=0, b=0, t=20),
-    )
-    return fig
-
-
-# ----------------- TAB 1: 3D EV PERCEPTION VIEW -----------------
+# ----------------- TAB 1: IMAGE DETECTION -----------------
 with tab1:
-    st.markdown("### 🧊 Live 3D Autonomous EV Navigation View")
-
-    col_btn, col_slider = st.columns([1, 2])
-    with col_btn:
-        start_anim = st.button("▶ Start 3D Vehicle Animation")
-    with col_slider:
-        ev_speed = st.slider(
-            "Manual EV Depth Controller",
-            min_value=5,
-            max_value=25,
-            value=10,
-            help="Adjust to move the EV manually or click the animation button.",
-        )
-
-    plot_holder = st.empty()
-
-    if start_anim:
-        # Loop animation driving forward through the scene
-        for step in range(5, 26, 1):
-            fig = build_3d_scene(step)
-            plot_holder.plotly_chart(fig, use_container_width=True)
-            time.sleep(0.08)
-    else:
-        fig = build_3d_scene(ev_speed)
-        plot_holder.plotly_chart(fig, use_container_width=True)
-
-# ----------------- TAB 2: IMAGE DETECTION -----------------
-with tab2:
     st.markdown("### 📷 Road Image Boundary Detection")
     uploaded_image = st.file_uploader(
         "Choose a road photo...", type=["jpg", "jpeg", "png"], key="img_upload"
@@ -309,7 +76,7 @@ with tab2:
 
         if st.button("Run Image Boundary Detection", key="btn_img"):
             with st.spinner(
-                "⏳ Processing road boundaries... Please be patient, it will upload soon! Meanwhile, check out our interactive 3D Perception View in Tab 1 above! 🚘"
+                "⏳ Processing road boundaries... Please be patient, it will upload soon! Meanwhile, check out our interactive 3D Perception View in Tab 3 above! Please avoid touching the slider while processing. 🚘"
             ):
                 results = model.predict(source=image, conf=conf_thresh)
                 res_plotted = results[0].plot()
@@ -319,8 +86,8 @@ with tab2:
                         res_plotted[..., ::-1], use_container_width=True
                     )
 
-# ----------------- TAB 3: VIDEO DETECTION -----------------
-with tab3:
+# ----------------- TAB 2: VIDEO DETECTION -----------------
+with tab2:
     st.markdown("### 🎥 Road Driving Video Inference")
     uploaded_video = st.file_uploader(
         "Upload Road Driving Video", type=["mp4", "avi", "mov"], key="vid_upload"
@@ -331,7 +98,7 @@ with tab3:
 
         if st.button("Run Video Detection", key="btn_vid"):
             with st.spinner(
-                "⏳ Processing video frames... Please be patient, it will upload soon! Meanwhile, check out our interactive 3D Perception View in Tab 1 above! 🎥"
+                "⏳ Processing video frames... Please be patient, it will upload soon! Meanwhile, check out our interactive 3D Perception View in Tab 3 above! 🎥"
             ):
                 tfile = tempfile.NamedTemporaryFile(delete=False, suffix=".mp4")
                 tfile.write(uploaded_video.read())
@@ -361,8 +128,162 @@ with tab3:
                 cap.release()
                 out.release()
 
+                # Robust subprocess execution for video transcoding
                 cmd = f"ffmpeg -y -i {raw_output_path} -vcodec libx264 {web_output_path}"
                 subprocess.run(cmd, shell=True, check=True)
 
                 st.success("Video processing complete!")
                 st.video(web_output_path)
+
+# ----------------- TAB 3: 3D EV PERCEPTION VIEW -----------------
+with tab3:
+    st.markdown("### 🧊 Live 3D Autonomous EV Navigation View")
+
+    ev_speed = st.slider(
+        "Simulated EV Motion Depth",
+        min_value=0,
+        max_value=20,
+        value=10,
+        help="Adjust to simulate EV forward movement in 3D space.",
+    )
+
+    x_road = np.linspace(-6, 6, 40)
+    y_road = np.linspace(0, 60, 60)
+    X, Y = np.meshgrid(x_road, y_road)
+    Z = np.zeros_like(X)
+
+    fig = go.Figure()
+
+    # 1. Driveable Surface
+    fig.add_trace(
+        go.Surface(
+            x=X,
+            y=Y,
+            z=Z,
+            colorscale=[[0, "#12161f"], [1, "#1e2530"]],
+            showscale=False,
+        )
+    )
+
+    # 2. Road Boundary Lines
+    y_line = np.linspace(0, 60, 60)
+    fig.add_trace(
+        go.Scatter3d(
+            x=[-4.5] * 60,
+            y=y_line,
+            z=[0.05] * 60,
+            mode="lines",
+            line=dict(color="#FF3366", width=8),
+            name="Left Boundary",
+        )
+    )
+    fig.add_trace(
+        go.Scatter3d(
+            x=[4.5] * 60,
+            y=y_line,
+            z=[0.05] * 60,
+            mode="lines",
+            line=dict(color="#FF3366", width=8),
+            name="Right Boundary",
+        )
+    )
+
+    # 3. Center Lane Dashed Divider
+    fig.add_trace(
+        go.Scatter3d(
+            x=[0] * 60,
+            y=y_line,
+            z=[0.03] * 60,
+            mode="lines",
+            line=dict(color="#FFCC00", width=4, dash="dash"),
+            name="Center Lane",
+        )
+    )
+
+    # ----------------- 3D VEHICLE MESH CREATION -----------------
+    # Vehicle Dimensions
+    car_w = 1.0  # Half-width
+    car_l = 2.0  # Half-length
+    car_h = 1.2  # Height
+    cy = ev_speed  # Position along the road
+
+    # 3D Mesh Vertices (Car Body + Cabin Shape)
+    v_x = [
+        -car_w, car_w, car_w, -car_w,            # Bottom corners: 0,1,2,3
+        -car_w, car_w, car_w, -car_w,            # Beltline (hood height): 4,5,6,7
+        -car_w * 0.8, car_w * 0.8, car_w * 0.8, -car_w * 0.8,  # Roof corners: 8,9,10,11
+    ]
+
+    v_y = [
+        cy - car_l, cy - car_l, cy + car_l, cy + car_l,  # Bottom corners
+        cy - car_l, cy - car_l, cy + car_l, cy + car_l,  # Beltline
+        cy - car_l * 0.3, cy - car_l * 0.3, cy + car_l * 0.5, cy + car_l * 0.5,  # Roof corners (tapered)
+    ]
+
+    v_z = [
+        0.2, 0.2, 0.2, 0.2,  # Bottom elevation (above ground)
+        0.7, 0.7, 0.7, 0.7,  # Beltline height
+        car_h + 0.2, car_h + 0.2, car_h + 0.2, car_h + 0.2,  # Roof height
+    ]
+
+    # Triangular Mesh Indices defining 3D faces
+    i_faces = [0, 1, 0, 4, 1, 5, 2, 6, 3, 7, 4, 5, 4, 7, 6, 7, 4, 5, 5, 6, 6, 7, 7, 4]
+    j_faces = [1, 2, 4, 5, 5, 6, 6, 7, 7, 4, 5, 6, 7, 6, 5, 4, 8, 9, 9, 10, 10, 11, 11, 8]
+    k_faces = [2, 3, 1, 0, 2, 1, 3, 2, 0, 3, 6, 7, 6, 5, 4, 7, 9, 8, 10, 9, 11, 10, 8, 11]
+
+    # Add 3D EV Body
+    fig.add_trace(
+        go.Mesh3d(
+            x=v_x,
+            y=v_y,
+            z=v_z,
+            i=i_faces,
+            j=j_faces,
+            k=k_faces,
+            color="#00D2FF",
+            opacity=0.85,
+            name="Host EV Chassis",
+            flatshading=True,
+        )
+    )
+
+    # EV Headlight Beams (Perception Visualizer)
+    fig.add_trace(
+        go.Scatter3d(
+            x=[-0.6, -1.8, 0, 1.8, 0.6],
+            y=[cy + car_l, cy + car_l + 12, cy, cy + car_l + 12, cy + car_l],
+            z=[0.5, 0.1, 0.5, 0.1, 0.5],
+            mode="lines",
+            line=dict(color="#00FFFF", width=3),
+            name="Sensor Field",
+        )
+    )
+
+    # 4. Surrounding Vehicles (Ahead Traffic rendered as 3D outlines)
+    fig.add_trace(
+        go.Scatter3d(
+            x=[-2, 2.2],
+            y=[ev_speed + 15, ev_speed + 30],
+            z=[0.8, 0.8],
+            mode="markers+text",
+            marker=dict(size=14, color="#FF9900", symbol="diamond"),
+            text=["Vehicle 1", "Vehicle 2"],
+            textposition="top center",
+            name="Ahead Traffic",
+        )
+    )
+
+    fig.update_layout(
+        scene=dict(
+            xaxis=dict(title="Lateral (m)", backgroundcolor="#0E1117"),
+            yaxis=dict(title="Distance Ahead (m)", backgroundcolor="#0E1117"),
+            zaxis=dict(title="Elevation (m)", backgroundcolor="#0E1117"),
+            aspectratio=dict(x=1, y=2.5, z=0.5),
+            camera=dict(eye=dict(x=-0.8, y=-1.5, z=1.0)),
+        ),
+        paper_bgcolor="#0E1117",
+        height=550,
+        margin=dict(l=0, r=0, b=0, t=20),
+    )
+
+    st.plotly_chart(fig, use_container_width=True)
