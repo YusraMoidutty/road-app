@@ -1,5 +1,4 @@
 import os
-import subprocess
 import tempfile
 import cv2
 import numpy as np
@@ -75,9 +74,11 @@ with tab1:
             st.image(image, use_container_width=True)
 
         if st.button("Run Image Boundary Detection", key="btn_img"):
-            with st.spinner(
-                "⏳ Processing road boundaries... Please be patient, it will upload soon! Meanwhile, check out our interactive 3D Perception View in Tab 3 above!. please do not swipe the "Simulated EV Motion Depth" in Tab 3🚘"
-            ):
+            msg_img = (
+                "⏳ Processing road boundaries... Please be patient, it will upload soon! "
+                "Meanwhile, check out our interactive 3D Perception View in Tab 3 above! 🚘"
+            )
+            with st.spinner(msg_img):
                 results = model.predict(source=image, conf=conf_thresh)
                 res_plotted = results[0].plot()
                 with col2:
@@ -97,9 +98,11 @@ with tab2:
         st.video(uploaded_video)
 
         if st.button("Run Video Detection", key="btn_vid"):
-            with st.spinner(
-                "⏳ Processing video frames... Please be patient, it will upload soon! Meanwhile, check out our interactive 3D Perception View in Tab 3 above! 🎥"
-            ):
+            msg_vid = (
+                "⏳ Processing video frames... Please be patient, it will upload soon! "
+                "Meanwhile, check out our interactive 3D Perception View in Tab 3 above! 🎥"
+            )
+            with st.spinner(msg_vid):
                 tfile = tempfile.NamedTemporaryFile(delete=False, suffix=".mp4")
                 tfile.write(uploaded_video.read())
 
@@ -128,7 +131,7 @@ with tab2:
                 cap.release()
                 out.release()
 
-                # Convert raw OpenCV video to H.264 format for browser support
+                # Convert raw OpenCV video to H.264 format for web browser rendering
                 os.system(
                     f"ffmpeg -y -i {raw_output_path} -vcodec libx264 {web_output_path}"
                 )
