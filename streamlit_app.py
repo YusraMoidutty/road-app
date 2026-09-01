@@ -57,7 +57,7 @@ conf_thresh = st.sidebar.slider("Confidence Threshold", 0.1, 1.0, 0.25, 0.05)
 
 # Separate Tabs Navigation
 tab1, tab2, tab3 = st.tabs(
-    ["📷 Image Detection", "🎥 Video Detection", "🧊 3D EV Perception View"]
+    ["📷 Upload Input Image", "🎥 Upload Input Video", "🧊 3D EV Perception View"]
 )
 
 # ----------------- TAB 1: IMAGE DETECTION -----------------
@@ -210,9 +210,9 @@ with tab3:
             z=[0.5],
             mode="markers+text",
             marker=dict(size=10, color="#00D2FF"),
-            text=["⚡ Ego EV"],
+            text=["⚡ Electric Vehicle"],
             textposition="top center",
-            name="Ego EV Position",
+            name="Electric Vehicle Position",
         )
     )
 
