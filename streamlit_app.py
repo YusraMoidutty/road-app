@@ -1,3 +1,5 @@
+import os
+import subprocess
 import tempfile
 import cv2
 import numpy as np
@@ -73,9 +75,8 @@ with tab1:
             st.image(image, use_container_width=True)
 
         if st.button("Run Image Boundary Detection", key="btn_img"):
-            # Custom spinner notification encouraging interactive 3D inspection while waiting
             with st.spinner(
-                "⏳ Processing road boundaries... Please be patient, it will upload soon! Meanwhile, check out our interactive 3D Perception View in Tab 3 above..Dont not press simulated EV motion while proessing the video! 🚘"
+                "⏳ Processing road boundaries... Please be patient, it will upload soon! Meanwhile, check out our interactive 3D Perception View in Tab 3 above! 🚘"
             ):
                 results = model.predict(source=image, conf=conf_thresh)
                 res_plotted = results[0].plot()
@@ -97,7 +98,7 @@ with tab2:
 
         if st.button("Run Video Detection", key="btn_vid"):
             with st.spinner(
-                "⏳ Processing video frames... Please be patient! Meanwhile, feel free to inspect our 3D Perception View tab above! 🎥"
+                "⏳ Processing video frames... Please be patient, it will upload soon! Meanwhile, check out our interactive 3D Perception View in Tab 3 above! 🎥"
             ):
                 tfile = tempfile.NamedTemporaryFile(delete=False, suffix=".mp4")
                 tfile.write(uploaded_video.read())
@@ -107,10 +108,12 @@ with tab2:
                 height = int(cap.get(cv2.CAP_PROP_FRAME_HEIGHT))
                 fps = cap.get(cv2.CAP_PROP_FPS)
 
-                output_path = "processed_output.mp4"
+                raw_output_path = "temp_raw_output.mp4"
+                web_output_path = "processed_output.mp4"
+
                 fourcc = cv2.VideoWriter_fourcc(*"mp4v")
                 out = cv2.VideoWriter(
-                    output_path, fourcc, fps, (width, height)
+                    raw_output_path, fourcc, fps, (width, height)
                 )
 
                 while cap.isOpened():
@@ -125,8 +128,13 @@ with tab2:
                 cap.release()
                 out.release()
 
+                # Convert raw OpenCV video to H.264 format for browser support
+                os.system(
+                    f"ffmpeg -y -i {raw_output_path} -vcodec libx264 {web_output_path}"
+                )
+
                 st.success("Video processing complete!")
-                st.video(output_path)
+                st.video(web_output_path)
 
 # ----------------- TAB 3: 3D EV PERCEPTION VIEW -----------------
 with tab3:
