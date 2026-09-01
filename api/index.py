@@ -8,7 +8,7 @@ from ultralytics import YOLO
 app = Flask(__name__)
 
 # Locate model in the root directory
-model_path = os.path.join(os.path.dirname(__file__), "..", "best.pt")
+model_path = os.path.join(os.path.dirname(__file__), "..", "best_preprocessed.pt")
 model = YOLO(model_path)
 
 @app.route('/api/detect', methods=['POST'])
