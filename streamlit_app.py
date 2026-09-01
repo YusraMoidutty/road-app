@@ -1,6 +1,7 @@
 import os
 import subprocess
 import tempfile
+import time
 import cv2
 import numpy as np
 import plotly.graph_objects as go
@@ -55,7 +56,7 @@ st.write(
 st.sidebar.header("Model Settings")
 conf_thresh = st.sidebar.slider("Confidence Threshold", 0.1, 1.0, 0.25, 0.05)
 
-# Reordered Tabs Navigation: 3D View First
+# Tabs Navigation
 tab1, tab2, tab3 = st.tabs(
     ["🧊 3D EV Perception View", "📷 Image Detection", "🎥 Video Detection"]
 )
@@ -63,7 +64,6 @@ tab1, tab2, tab3 = st.tabs(
 
 def create_vehicle_mesh(x_center, y_center, z_center, color, name):
     """Generates 3D box meshes representing detailed vehicle body & roof."""
-    # Base Dimensions
     w, l, h = 1.8, 4.0, 1.2
 
     # Lower Chassis Vertices
@@ -164,18 +164,8 @@ def create_vehicle_mesh(x_center, y_center, z_center, color, name):
     return [mesh_body, mesh_roof]
 
 
-# ----------------- TAB 1: 3D EV PERCEPTION VIEW (FIRST TAB) -----------------
-with tab1:
-    st.markdown("### 🧊 Live 3D Autonomous EV Navigation View")
-
-    ev_speed = st.slider(
-        "Simulated EV Motion Depth",
-        min_value=0,
-        max_value=20,
-        value=10,
-        help="Adjust to simulate EV forward movement in 3D space.",
-    )
-
+def build_3d_scene(pos_y):
+    """Generates the Plotly 3D Figure centered on the host vehicle at pos_y."""
     x_road = np.linspace(-6, 6, 40)
     y_road = np.linspace(0, 60, 60)
     X, Y = np.meshgrid(x_road, y_road)
@@ -217,7 +207,7 @@ with tab1:
         )
     )
 
-    # Center Lane Dashed Divider
+    # Center Lane Divider
     fig.add_trace(
         go.Scatter3d(
             x=[0] * 60,
@@ -229,41 +219,79 @@ with tab1:
         )
     )
 
-    # Ego EV Position (Mesh Vehicle)
+    # Ego Host EV (Cyan 3D Mesh)
     ego_traces = create_vehicle_mesh(
-        0, ev_speed, 0.1, "#00D2FF", "⚡ Ego EV (Host)"
+        0, pos_y, 0.1, "#00D2FF", "⚡ Ego EV (Host)"
     )
     for trace in ego_traces:
         fig.add_trace(trace)
 
-    # Surrounding Vehicle 1 (Ahead Left Lane)
+    # Surrounding Traffic Vehicles
     v1_traces = create_vehicle_mesh(
-        -2.2, ev_speed + 18, 0.1, "#FF9900", "🚘 Ahead Vehicle 1"
+        -2.2, pos_y + 16, 0.1, "#FF9900", "🚘 Traffic Car 1"
     )
     for trace in v1_traces:
         fig.add_trace(trace)
 
-    # Surrounding Vehicle 2 (Ahead Right Lane)
     v2_traces = create_vehicle_mesh(
-        2.2, ev_speed + 32, 0.1, "#00FF66", "🚘 Ahead Vehicle 2"
+        2.2, pos_y + 28, 0.1, "#00FF66", "🚘 Traffic Car 2"
     )
     for trace in v2_traces:
         fig.add_trace(trace)
 
+    # Centered Camera Angle
     fig.update_layout(
         scene=dict(
-            xaxis=dict(title="Lateral (m)", backgroundcolor="#0E1117"),
-            yaxis=dict(title="Distance Ahead (m)", backgroundcolor="#0E1117"),
-            zaxis=dict(title="Elevation (m)", backgroundcolor="#0E1117"),
+            xaxis=dict(
+                title="Lateral (m)", range=[-6, 6], backgroundcolor="#0E1117"
+            ),
+            yaxis=dict(
+                title="Distance Ahead (m)",
+                range=[0, 60],
+                backgroundcolor="#0E1117",
+            ),
+            zaxis=dict(
+                title="Elevation (m)", range=[0, 8], backgroundcolor="#0E1117"
+            ),
             aspectratio=dict(x=1, y=2.5, z=0.5),
-            camera=dict(eye=dict(x=0, y=-1.3, z=1.1)),
+            camera=dict(
+                eye=dict(x=0, y=-1.8, z=1.4), center=dict(x=0, y=0.2, z=0)
+            ),
         ),
         paper_bgcolor="#0E1117",
         height=550,
         margin=dict(l=0, r=0, b=0, t=20),
     )
+    return fig
 
-    st.plotly_chart(fig, use_container_width=True)
+
+# ----------------- TAB 1: 3D EV PERCEPTION VIEW -----------------
+with tab1:
+    st.markdown("### 🧊 Live 3D Autonomous EV Navigation View")
+
+    col_btn, col_slider = st.columns([1, 2])
+    with col_btn:
+        start_anim = st.button("▶ Start 3D Vehicle Animation")
+    with col_slider:
+        ev_speed = st.slider(
+            "Manual EV Depth Controller",
+            min_value=5,
+            max_value=25,
+            value=10,
+            help="Adjust to move the EV manually or click the animation button.",
+        )
+
+    plot_holder = st.empty()
+
+    if start_anim:
+        # Loop animation driving forward through the scene
+        for step in range(5, 26, 1):
+            fig = build_3d_scene(step)
+            plot_holder.plotly_chart(fig, use_container_width=True)
+            time.sleep(0.08)
+    else:
+        fig = build_3d_scene(ev_speed)
+        plot_holder.plotly_chart(fig, use_container_width=True)
 
 # ----------------- TAB 2: IMAGE DETECTION -----------------
 with tab2:
