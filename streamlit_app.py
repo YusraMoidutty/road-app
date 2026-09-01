@@ -75,7 +75,7 @@ with tab1:
         if st.button("Run Image Boundary Detection", key="btn_img"):
             # Custom spinner notification encouraging interactive 3D inspection while waiting
             with st.spinner(
-                "⏳ Processing road boundaries... Please be patient, it will upload soon! Meanwhile, check out our interactive 3D Perception View in Tab 3 above! 🚘"
+                "⏳ Processing road boundaries... Please be patient, it will upload soon! Meanwhile, check out our interactive 3D Perception View in Tab 3 above..Dont not press simulated EV motion while proessing the video! 🚘"
             ):
                 results = model.predict(source=image, conf=conf_thresh)
                 res_plotted = results[0].plot()
