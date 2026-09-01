@@ -3,4 +3,3 @@ opencv-python-headless
 streamlit
 pillow
 plotly
-ffmpeg-python
