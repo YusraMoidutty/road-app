@@ -11,7 +11,7 @@ st.set_page_config(
     page_title="EV Road Boundary Perception", page_icon="⚡", layout="wide"
 )
 
-# Custom CSS Styling
+# Custom Styling
 st.markdown(
     """
     <style>
@@ -44,24 +44,94 @@ def load_model():
 
 model = load_model()
 
-st.title("⚡ Electric Vehicle 3D Road & Boundary Perception")
+st.title("⚡ Electric Vehicle Road & Boundary Perception System")
 st.write(
-    "Real-time autonomous navigation, boundary detection, and dynamic 3D road spatial modeling."
+    "Real-time autonomous navigation, boundary detection, and dynamic 3D spatial modeling."
 )
 
-# Sidebar
+# Sidebar Options
 st.sidebar.header("Model Settings")
 conf_thresh = st.sidebar.slider("Confidence Threshold", 0.1, 1.0, 0.25, 0.05)
 
-# Tabs Navigation
-tab1, tab2 = st.tabs(["🚘 3D EV Perception & Image Detection", "🎥 Video Detection"])
+# Separate Tabs Navigation
+tab1, tab2, tab3 = st.tabs(
+    ["📷 Image Detection", "🎥 Video Detection", "🧊 3D EV Perception View"]
+)
 
-# ----------------- TAB 1: 3D HERO + IMAGE DETECTION -----------------
+# ----------------- TAB 1: IMAGE DETECTION -----------------
 with tab1:
-    # --- 1. FIRST PAGE HERO: 3D Dynamic Moving EV Perspective ---
+    st.markdown("### 📷 Road Image Boundary Detection")
+    uploaded_image = st.file_uploader(
+        "Choose a road photo...", type=["jpg", "jpeg", "png"], key="img_upload"
+    )
+
+    if uploaded_image is not None:
+        image = Image.open(uploaded_image)
+        col1, col2 = st.columns(2)
+        with col1:
+            st.markdown("**Original Input**")
+            st.image(image, use_container_width=True)
+
+        if st.button("Run Image Boundary Detection", key="btn_img"):
+            # Custom spinner notification encouraging interactive 3D inspection while waiting
+            with st.spinner(
+                "⏳ Processing road boundaries... Please be patient, it will upload soon! Meanwhile, check out our interactive 3D Perception View in Tab 3 above! 🚘"
+            ):
+                results = model.predict(source=image, conf=conf_thresh)
+                res_plotted = results[0].plot()
+                with col2:
+                    st.markdown("**Processed Boundary Output**")
+                    st.image(
+                        res_plotted[..., ::-1], use_container_width=True
+                    )
+
+# ----------------- TAB 2: VIDEO DETECTION -----------------
+with tab2:
+    st.markdown("### 🎥 Road Driving Video Inference")
+    uploaded_video = st.file_uploader(
+        "Upload Road Driving Video", type=["mp4", "avi", "mov"], key="vid_upload"
+    )
+
+    if uploaded_video is not None:
+        st.video(uploaded_video)
+
+        if st.button("Run Video Detection", key="btn_vid"):
+            with st.spinner(
+                "⏳ Processing video frames... Please be patient! Meanwhile, feel free to inspect our 3D Perception View tab above! 🎥"
+            ):
+                tfile = tempfile.NamedTemporaryFile(delete=False, suffix=".mp4")
+                tfile.write(uploaded_video.read())
+
+                cap = cv2.VideoCapture(tfile.name)
+                width = int(cap.get(cv2.CAP_PROP_FRAME_WIDTH))
+                height = int(cap.get(cv2.CAP_PROP_FRAME_HEIGHT))
+                fps = cap.get(cv2.CAP_PROP_FPS)
+
+                output_path = "processed_output.mp4"
+                fourcc = cv2.VideoWriter_fourcc(*"mp4v")
+                out = cv2.VideoWriter(
+                    output_path, fourcc, fps, (width, height)
+                )
+
+                while cap.isOpened():
+                    ret, frame = cap.read()
+                    if not ret:
+                        break
+                    results = model.predict(
+                        source=frame, conf=conf_thresh, verbose=False
+                    )
+                    out.write(results[0].plot())
+
+                cap.release()
+                out.release()
+
+                st.success("Video processing complete!")
+                st.video(output_path)
+
+# ----------------- TAB 3: 3D EV PERCEPTION VIEW -----------------
+with tab3:
     st.markdown("### 🧊 Live 3D Autonomous EV Navigation View")
 
-    # Interactive Speed Controller for 3D View
     ev_speed = st.slider(
         "Simulated EV Motion Depth",
         min_value=0,
@@ -70,7 +140,6 @@ with tab1:
         help="Adjust to simulate EV forward movement in 3D space.",
     )
 
-    # Generate 3D Mesh for Road & Moving Vehicle
     x_road = np.linspace(-6, 6, 40)
     y_road = np.linspace(0, 60, 60)
     X, Y = np.meshgrid(x_road, y_road)
@@ -78,7 +147,7 @@ with tab1:
 
     fig = go.Figure()
 
-    # Driveable Road Surface
+    # Driveable Surface
     fig.add_trace(
         go.Surface(
             x=X,
@@ -89,7 +158,7 @@ with tab1:
         )
     )
 
-    # Road Boundaries (Red Lines)
+    # Road Boundary Lines
     y_line = np.linspace(0, 60, 60)
     fig.add_trace(
         go.Scatter3d(
@@ -124,7 +193,7 @@ with tab1:
         )
     )
 
-    # Ego Electric Vehicle (Moving based on slider depth)
+    # Ego EV Position
     fig.add_trace(
         go.Scatter3d(
             x=[0],
@@ -138,7 +207,7 @@ with tab1:
         )
     )
 
-    # Dynamic Moving Surrounding Vehicles Ahead
+    # Surrounding Vehicles
     fig.add_trace(
         go.Scatter3d(
             x=[-2, 2.2],
@@ -161,74 +230,8 @@ with tab1:
             camera=dict(eye=dict(x=0, y=-1.3, z=1.1)),
         ),
         paper_bgcolor="#0E1117",
-        height=400,
+        height=500,
         margin=dict(l=0, r=0, b=0, t=20),
     )
 
     st.plotly_chart(fig, use_container_width=True)
-
-    st.divider()
-
-    # --- 2. IMAGE BOUNDARY DETECTION ---
-    st.markdown("### 📷 Upload Image for YOLO Boundary Extraction")
-    uploaded_image = st.file_uploader(
-        "Choose a road photo...", type=["jpg", "jpeg", "png"], key="img_upload"
-    )
-
-    if uploaded_image is not None:
-        image = Image.open(uploaded_image)
-        col1, col2 = st.columns(2)
-        with col1:
-            st.markdown("**Original Input**")
-            st.image(image, use_container_width=True)
-
-        if st.button("Run Image Boundary Detection", key="btn_img"):
-            with st.spinner("Processing road boundaries..."):
-                results = model.predict(source=image, conf=conf_thresh)
-                res_plotted = results[0].plot()
-                with col2:
-                    st.markdown("**Processed Boundary Output**")
-                    st.image(
-                        res_plotted[..., ::-1], use_container_width=True
-                    )
-
-# ----------------- TAB 2: VIDEO DETECTION -----------------
-with tab2:
-    st.markdown("### 🎥 Video Boundary Inference")
-    uploaded_video = st.file_uploader(
-        "Upload Road Driving Video", type=["mp4", "avi", "mov"], key="vid_upload"
-    )
-
-    if uploaded_video is not None:
-        st.video(uploaded_video)
-
-        if st.button("Run Video Boundary Detection", key="btn_vid"):
-            with st.spinner("Processing video frames..."):
-                tfile = tempfile.NamedTemporaryFile(delete=False, suffix=".mp4")
-                tfile.write(uploaded_video.read())
-
-                cap = cv2.VideoCapture(tfile.name)
-                width = int(cap.get(cv2.CAP_PROP_FRAME_WIDTH))
-                height = int(cap.get(cv2.CAP_PROP_FRAME_HEIGHT))
-                fps = cap.get(cv2.CAP_PROP_FPS)
-
-                output_path = "processed_output.mp4"
-                fourcc = cv2.VideoWriter_fourcc(*"mp4v")
-                out = cv2.VideoWriter(
-                    output_path, fourcc, fps, (width, height)
-                )
-
-                while cap.isOpened():
-                    ret, frame = cap.read()
-                    if not ret:
-                        break
-                    results = model.predict(
-                        source=frame, conf=conf_thresh, verbose=False
-                    )
-                    out.write(results[0].plot())
-
-                cap.release()
-                out.release()
-
-                st.success("Video processing complete!")
-                st.video(output_path)
