@@ -2,6 +2,7 @@ import gc
 import os
 import subprocess
 import tempfile
+import time
 import cv2
 import numpy as np
 import plotly.graph_objects as go
@@ -9,12 +10,11 @@ import streamlit as st
 from PIL import Image
 from ultralytics import YOLO
 
-# Page Configuration
+# ----------------- PAGE CONFIG & STYLING -----------------
 st.set_page_config(
     page_title="EV Road Boundary Perception", page_icon="⚡", layout="wide"
 )
 
-# Custom Styling
 st.markdown(
     """
     <style>
@@ -42,7 +42,6 @@ st.markdown(
 
 @st.cache_resource
 def load_model():
-    # Make sure best_preprocessed.pt is in your root directory or update path accordingly
     return YOLO("best_preprocessed.pt")
 
 
@@ -53,11 +52,9 @@ st.write(
     "Real-time autonomous navigation, boundary detection, and dynamic 3D spatial modeling."
 )
 
-# Sidebar Options
 st.sidebar.header("Model Settings")
 conf_thresh = st.sidebar.slider("Confidence Threshold", 0.1, 1.0, 0.25, 0.05)
 
-# Separate Tabs Navigation
 tab1, tab2, tab3 = st.tabs(
     ["📷 Image Detection", "🎥 Video Detection", "🧊 3D EV Perception View"]
 )
@@ -77,14 +74,20 @@ with tab1:
             st.image(image, use_container_width=True)
 
         if st.button("Run Image Boundary Detection", key="btn_img"):
+            img_start_time = time.time()
             with st.spinner("⏳ Processing road boundaries..."):
                 results = model.predict(source=image, conf=conf_thresh)
                 res_plotted = results[0].plot()
+
+                img_elapsed = round(time.time() - img_start_time, 2)
                 with col2:
                     st.markdown("**Processed Boundary Output**")
                     st.image(res_plotted[..., ::-1], use_container_width=True)
+                st.success(
+                    f"⚡ Image processing complete in {img_elapsed} seconds!"
+                )
 
-# ----------------- TAB 2: VIDEO DETECTION (MEMORY-SAFE) -----------------
+# ----------------- TAB 2: VIDEO DETECTION -----------------
 with tab2:
     st.markdown("### 🎥 Road Driving Video Inference")
     uploaded_video = st.file_uploader(
@@ -95,19 +98,22 @@ with tab2:
         st.video(uploaded_video)
 
         if st.button("Run Video Detection", key="btn_vid"):
-            with st.spinner("⏳ Processing video efficiently..."):
+            vid_start_time = time.time()
+
+            with st.spinner(
+                "⏳ Processing video efficiently... Please wait."
+            ):
                 tfile = tempfile.NamedTemporaryFile(delete=False, suffix=".mp4")
                 tfile.write(uploaded_video.read())
 
                 cap = cv2.VideoCapture(tfile.name)
                 width = int(cap.get(cv2.CAP_PROP_FRAME_WIDTH))
                 height = int(cap.get(cv2.CAP_PROP_FRAME_HEIGHT))
-                fps = cap.get(cv2.CAP_PROP_FPS)
 
                 raw_output_path = "temp_raw_output.mp4"
                 web_output_path = "processed_output.mp4"
 
-                # Reduce output FPS overhead to save processing power
+                # 15 FPS export reduces compute overhead and memory load
                 fourcc = cv2.VideoWriter_fourcc(*"mp4v")
                 out = cv2.VideoWriter(raw_output_path, fourcc, 15, (width, height))
 
@@ -118,18 +124,18 @@ with tab2:
                         break
 
                     frame_count += 1
-                    # Skip every 2nd frame to cut RAM and CPU load by 50%
+                    # Skip every 2nd frame to cut RAM usage by 50%
                     if frame_count % 2 != 0:
                         continue
 
-                    # imgsz=320 keeps tensor memory usage low
+                    # imgsz=320 keeps neural net inference lightweight on CPU
                     results = model.predict(
                         source=frame, conf=conf_thresh, imgsz=320, verbose=False
                     )
 
                     out.write(results[0].plot())
 
-                    # Clean up memory buffers explicitly
+                    # Reclaim system RAM every 10 frames
                     del results
                     if frame_count % 10 == 0:
                         gc.collect()
@@ -137,14 +143,18 @@ with tab2:
                 cap.release()
                 out.release()
 
-                # Low-memory ffmpeg conversion flags
+                # Low-memory fast encoding command
                 cmd = f"ffmpeg -y -i {raw_output_path} -vcodec libx264 -preset ultrafast -crf 28 {web_output_path}"
                 subprocess.run(cmd, shell=True, check=True)
 
-                st.success("Video processing complete!")
+                vid_elapsed = round(time.time() - vid_start_time, 2)
+
+                st.success(
+                    f"✅ Video processing complete in {vid_elapsed} seconds!"
+                )
                 st.video(web_output_path)
 
-                # Clean temporary raw video files
+                # Clean temporary workspace files
                 if os.path.exists(tfile.name):
                     os.remove(tfile.name)
                 if os.path.exists(raw_output_path):
@@ -169,7 +179,7 @@ with tab3:
 
     fig = go.Figure()
 
-    # Ground surface plane
+    # Ground plane
     fig.add_trace(
         go.Surface(
             x=X,
@@ -180,7 +190,7 @@ with tab3:
         )
     )
 
-    # Road Boundary Lines
+    # Left & Right Road Boundaries
     y_line = np.linspace(0, 60, 60)
     fig.add_trace(
         go.Scatter3d(
@@ -203,7 +213,7 @@ with tab3:
         )
     )
 
-    # Center Lane Dashed Line
+    # Center Lane Marker
     fig.add_trace(
         go.Scatter3d(
             x=[0] * 60,
@@ -217,7 +227,7 @@ with tab3:
 
     cy = ev_speed
 
-    # Ego EV Node Marker
+    # Ego EV Marker
     fig.add_trace(
         go.Scatter3d(
             x=[0],
@@ -231,7 +241,7 @@ with tab3:
         )
     )
 
-    # Sensor Field Rays
+    # Sensor Vision Field
     sensor_x = [0, -3.5, 3.5, 0]
     sensor_y = [cy, cy + 20, cy + 20, cy]
     sensor_z = [0.5, 0.1, 0.1, 0.5]
@@ -258,7 +268,7 @@ with tab3:
         )
     )
 
-    # Surrounding Vehicles
+    # Surrounding Obstacles/Traffic
     fig.add_trace(
         go.Scatter3d(
             x=[-2, 2.2],
