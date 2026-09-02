@@ -57,7 +57,7 @@ conf_thresh = st.sidebar.slider("Confidence Threshold", 0.1, 1.0, 0.25, 0.05)
 
 # Rearranged order: 3D View -> Image -> Video
 tab1, tab2, tab3 = st.tabs(
-    ["🧊 3D EV Perception View", "📷 Image Detection", "🎥 Video Detection"]
+    ["🧊 3D EV Perception View", "📷 Upload Image", "🎥 Upload Video"]
 )
 
 # ----------------- TAB 1: 3D EV PERCEPTION VIEW -----------------
