@@ -55,9 +55,9 @@ st.write(
 st.sidebar.header("Model Settings")
 conf_thresh = st.sidebar.slider("Confidence Threshold", 0.1, 1.0, 0.25, 0.05)
 
-# Rearranged order: 3D View -> Image -> Video
+# Rearranged Order: 3D View -> Image Detection -> Video Detection
 tab1, tab2, tab3 = st.tabs(
-    ["🧊 3D EV Perception View", "📷 Upload Image", "🎥 Upload Video"]
+    ["🧊 3D EV Perception View", "📷 Image Detection", "🎥 Video Detection"]
 )
 
 # ----------------- TAB 1: 3D EV PERCEPTION VIEW -----------------
@@ -65,7 +65,7 @@ with tab1:
     st.markdown("### 🧊 Live 3D Autonomous EV Navigation View")
 
     ev_speed = st.slider(
-        "Simulated Electric Vehicle Motion Depth — Rotate with your mouse for a 3D experience.",
+        "Simulated EV Motion Depth",
         min_value=0,
         max_value=20,
         value=10,
@@ -238,21 +238,19 @@ with tab3:
         if st.button("Run Video Detection", key="btn_vid"):
             vid_start_time = time.time()
 
-            with st.spinner(
-                "⏳ Processing video efficiently... Please wait."
-            ):
+            with st.spinner("⏳ Processing video efficiently... Please wait."):
                 tfile = tempfile.NamedTemporaryFile(delete=False, suffix=".mp4")
                 tfile.write(uploaded_video.read())
+                tfile.close()
 
                 cap = cv2.VideoCapture(tfile.name)
                 width = int(cap.get(cv2.CAP_PROP_FRAME_WIDTH))
                 height = int(cap.get(cv2.CAP_PROP_FRAME_HEIGHT))
 
-                raw_output_path = "temp_raw_output.mp4"
+                raw_output_path = "temp_raw_output.avi"
                 web_output_path = "processed_output.mp4"
 
-                # 15 FPS export reduces compute overhead and memory load
-                fourcc = cv2.VideoWriter_fourcc(*"mp4v")
+                fourcc = cv2.VideoWriter_fourcc(*"XVID")
                 out = cv2.VideoWriter(raw_output_path, fourcc, 15, (width, height))
 
                 frame_count = 0
@@ -262,27 +260,25 @@ with tab3:
                         break
 
                     frame_count += 1
-                    # Skip every 2nd frame to cut RAM usage by 50%
                     if frame_count % 2 != 0:
                         continue
 
-                    # imgsz=320 keeps neural net inference lightweight on CPU
                     results = model.predict(
                         source=frame, conf=conf_thresh, imgsz=320, verbose=False
                     )
 
                     out.write(results[0].plot())
 
-                    # Reclaim system RAM every 10 frames
                     del results
                     if frame_count % 10 == 0:
                         gc.collect()
 
                 cap.release()
                 out.release()
+                cv2.destroyAllWindows()
+                time.sleep(1)
 
-                # Low-memory fast encoding command
-                cmd = f"ffmpeg -y -i {raw_output_path} -vcodec libx264 -preset ultrafast -crf 28 {web_output_path}"
+                cmd = f"ffmpeg -y -i {raw_output_path} -vcodec libx264 -pix_fmt yuv420p -preset ultrafast -crf 28 {web_output_path}"
                 subprocess.run(cmd, shell=True, check=True)
 
                 vid_elapsed = round(time.time() - vid_start_time, 2)
@@ -290,9 +286,10 @@ with tab3:
                 st.success(
                     f"✅ Video processing complete in {vid_elapsed} seconds!"
                 )
-                st.video(web_output_path)
 
-                # Clean temporary workspace files
+                with open(web_output_path, "rb") as vid_file:
+                    st.video(vid_file.read())
+
                 if os.path.exists(tfile.name):
                     os.remove(tfile.name)
                 if os.path.exists(raw_output_path):
