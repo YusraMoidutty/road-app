@@ -1,10 +1,9 @@
 import gc
 import os
-import subprocess
 import tempfile
 import time
 import cv2
-import imageio_ffmpeg as ffmpeg
+import imageio
 import numpy as np
 import plotly.graph_objects as go
 import streamlit as st
@@ -244,14 +243,13 @@ with tab3:
                 tfile.close()
 
                 cap = cv2.VideoCapture(tfile.name)
-                temp_output_path = "temp_processed.mp4"
                 web_output_path = "processed_h264.mp4"
 
-                # Standardize export frame size to save CPU
                 out_w, out_h = 640, 360
-                fourcc = cv2.VideoWriter_fourcc(*"mp4v")
-                out = cv2.VideoWriter(
-                    temp_output_path, fourcc, 10, (out_w, out_h)
+
+                # Use imageio to directly write browser-compatible H.264 video
+                writer = imageio.get_writer(
+                    web_output_path, fps=10, codec="libx264", pixelformat="yuv420p"
                 )
 
                 frame_count = 0
@@ -261,11 +259,9 @@ with tab3:
                         break
 
                     frame_count += 1
-                    # Skip 2 out of 3 frames to lower CPU load
                     if frame_count % 3 != 0:
                         continue
 
-                    # Downscale frame for fast execution
                     resized_frame = cv2.resize(frame, (out_w, out_h))
 
                     results = model.predict(
@@ -275,30 +271,18 @@ with tab3:
                         verbose=False,
                     )
 
-                    out.write(results[0].plot())
+                    annotated_frame = results[0].plot()
+                    # Convert BGR (OpenCV) to RGB (ImageIO)
+                    rgb_frame = cv2.cvtColor(annotated_frame, cv2.COLOR_BGR2RGB)
+                    writer.append_data(rgb_frame)
 
                     del results
                     if frame_count % 15 == 0:
                         gc.collect()
 
                 cap.release()
-                out.release()
+                writer.close()
                 cv2.destroyAllWindows()
-
-                # Transcode mp4v to web-playable H.264 using imageio-ffmpeg binary
-                ffmpeg_exe = ffmpeg.get_ffmpeg_exe()
-                subprocess.run(
-                    [
-                        ffmpeg_exe,
-                        "-y",
-                        "-i",
-                        temp_output_path,
-                        "-vcodec",
-                        "libx264",
-                        web_output_path,
-                    ],
-                    check=True,
-                )
 
                 vid_elapsed = round(time.time() - vid_start_time, 2)
 
@@ -306,15 +290,9 @@ with tab3:
                     f"✅ Video processing complete in {vid_elapsed} seconds!"
                 )
 
-                # Render browser-compatible video
-                with open(web_output_path, "rb") as vid_file:
-                    st.video(vid_file.read())
+                # Render output directly from disk
+                st.video(web_output_path)
 
-                # Clean up temporary files
-                for file_path in [
-                    tfile.name,
-                    temp_output_path,
-                    web_output_path,
-                ]:
-                    if os.path.exists(file_path):
-                        os.remove(file_path)
+                # Cleanup temp input file
+                if os.path.exists(tfile.name):
+                    os.remove(tfile.name)
