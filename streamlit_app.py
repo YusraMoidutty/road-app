@@ -3,18 +3,19 @@ import os
 import tempfile
 import time
 import cv2
-import imageio
 import numpy as np
 import plotly.graph_objects as go
 import streamlit as st
+from moviepy.editor import VideoFileClip
 from PIL import Image
 from ultralytics import YOLO
 
-# ----------------- PAGE CONFIG & STYLING -----------------
+# ----------------- PAGE CONFIG -----------------
 st.set_page_config(
     page_title="EV Road Boundary Perception", page_icon="⚡", layout="wide"
 )
 
+# Custom button styling (Removed global header/footer hiding to prevent blank page crashes)
 st.markdown(
     """
     <style>
@@ -31,9 +32,6 @@ st.markdown(
         background-color: #00a8cc;
         color: white;
     }
-    #MainMenu {visibility: hidden;}
-    footer {visibility: hidden;}
-    header {visibility: hidden;}
     </style>
 """,
     unsafe_allow_html=True,
@@ -243,13 +241,13 @@ with tab3:
                 tfile.close()
 
                 cap = cv2.VideoCapture(tfile.name)
-                web_output_path = "processed_h264.mp4"
+                raw_output_path = "raw_output.mp4"
+                web_output_path = "web_output.mp4"
 
                 out_w, out_h = 640, 360
-
-                # Use imageio to directly write browser-compatible H.264 video
-                writer = imageio.get_writer(
-                    web_output_path, fps=10, codec="libx264", pixelformat="yuv420p"
+                fourcc = cv2.VideoWriter_fourcc(*"mp4v")
+                out = cv2.VideoWriter(
+                    raw_output_path, fourcc, 10, (out_w, out_h)
                 )
 
                 frame_count = 0
@@ -271,18 +269,22 @@ with tab3:
                         verbose=False,
                     )
 
-                    annotated_frame = results[0].plot()
-                    # Convert BGR (OpenCV) to RGB (ImageIO)
-                    rgb_frame = cv2.cvtColor(annotated_frame, cv2.COLOR_BGR2RGB)
-                    writer.append_data(rgb_frame)
+                    out.write(results[0].plot())
 
                     del results
                     if frame_count % 15 == 0:
                         gc.collect()
 
                 cap.release()
-                writer.close()
+                out.release()
                 cv2.destroyAllWindows()
+
+                # Convert raw OpenCV file to H.264 web format using MoviePy
+                clip = VideoFileClip(raw_output_path)
+                clip.write_videofile(
+                    web_output_path, codec="libx264", audio=False, verbose=False
+                )
+                clip.close()
 
                 vid_elapsed = round(time.time() - vid_start_time, 2)
 
@@ -290,9 +292,12 @@ with tab3:
                     f"✅ Video processing complete in {vid_elapsed} seconds!"
                 )
 
-                # Render output directly from disk
-                st.video(web_output_path)
+                # Render HTML5 video
+                with open(web_output_path, "rb") as vid_file:
+                    st.video(vid_file.read())
 
-                # Cleanup temp input file
+                # Clean up temporary raw video file
+                if os.path.exists(raw_output_path):
+                    os.remove(raw_output_path)
                 if os.path.exists(tfile.name):
                     os.remove(tfile.name)
