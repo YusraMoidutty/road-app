@@ -2,6 +2,7 @@ import gc
 import os
 import tempfile
 import time
+import av
 import cv2
 import numpy as np
 import plotly.graph_objects as go
@@ -9,12 +10,12 @@ import streamlit as st
 from PIL import Image
 from ultralytics import YOLO
 
-# ----------------- PAGE CONFIG -----------------
+# ----------------- PAGE CONFIG & STYLING -----------------
 st.set_page_config(
     page_title="EV Road Boundary Perception", page_icon="⚡", layout="wide"
 )
 
-# Custom button styling
+# Custom action button styling
 st.markdown(
     """
     <style>
@@ -240,22 +241,16 @@ with tab3:
                 tfile.close()
 
                 cap = cv2.VideoCapture(tfile.name)
-                web_output_path = "web_output.mp4"
+                output_video_path = "web_output.mp4"
 
                 out_w, out_h = 640, 360
 
-                # 'avc1' encodes directly into web-playable H.264
-                fourcc = cv2.VideoWriter_fourcc(*"avc1")
-                out = cv2.VideoWriter(
-                    web_output_path, fourcc, 10, (out_w, out_h)
-                )
-
-                # Fallback to mp4v if avc1 is unsupported on the system
-                if not out.isOpened():
-                    fourcc = cv2.VideoWriter_fourcc(*"mp4v")
-                    out = cv2.VideoWriter(
-                        web_output_path, fourcc, 10, (out_w, out_h)
-                    )
+                # Setup PyAV H.264 Encoder Container
+                container = av.open(output_video_path, mode="w")
+                stream = container.add_stream("h264", rate=15)
+                stream.width = out_w
+                stream.height = out_h
+                stream.pix_fmt = "yuv420p"
 
                 frame_count = 0
                 while cap.isOpened():
@@ -264,7 +259,8 @@ with tab3:
                         break
 
                     frame_count += 1
-                    if frame_count % 3 != 0:
+                    # Skip frame logic to reduce CPU latency
+                    if frame_count % 2 != 0:
                         continue
 
                     resized_frame = cv2.resize(frame, (out_w, out_h))
@@ -276,24 +272,37 @@ with tab3:
                         verbose=False,
                     )
 
-                    out.write(results[0].plot())
+                    # Get YOLO annotations and convert BGR (OpenCV) -> RGB
+                    processed_bgr = results[0].plot()
+                    processed_rgb = cv2.cvtColor(
+                        processed_bgr, cv2.COLOR_BGR2RGB
+                    )
+
+                    # Encode frame into H.264 stream directly
+                    av_frame = av.VideoFrame.from_ndarray(
+                        processed_rgb, format="rgb24"
+                    )
+                    for packet in stream.encode(av_frame):
+                        container.mux(packet)
 
                     del results
-                    if frame_count % 15 == 0:
+                    if frame_count % 10 == 0:
                         gc.collect()
 
+                # Flush encoder stream
+                for packet in stream.encode():
+                    container.mux(packet)
+
+                container.close()
                 cap.release()
-                out.release()
-                cv2.destroyAllWindows()
 
                 vid_elapsed = round(time.time() - vid_start_time, 2)
-
                 st.success(
                     f"✅ Video processing complete in {vid_elapsed} seconds!"
                 )
 
-                # Render HTML5 video output directly
-                with open(web_output_path, "rb") as vid_file:
+                # Render output video in browser
+                with open(output_video_path, "rb") as vid_file:
                     st.video(vid_file.read())
 
                 if os.path.exists(tfile.name):
