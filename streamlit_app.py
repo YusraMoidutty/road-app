@@ -7,7 +7,7 @@ import numpy as np
 import plotly.graph_objects as go
 import streamlit as st
 from PIL import Image
-import torch
+from ultralytics import YOLO
 
 # ----------------- PAGE CONFIG & STYLING -----------------
 st.set_page_config(
@@ -34,149 +34,260 @@ st.markdown(
     footer {visibility: hidden;}
     header {visibility: hidden;}
     </style>
-    """,
+""",
     unsafe_allow_html=True,
 )
 
-# ----------------- MODEL LOADING -----------------
+
 @st.cache_resource
-def load_perception_model(model_path="best_preprocessed.pt"):
-    if not os.path.exists(model_path):
-        return None
-    try:
-        model = torch.jit.load(model_path) if model_path.endswith(".torchscript") else torch.load(model_path, map_location="cpu")
-        if isinstance(model, dict) and "model" in model:
-            model = model["model"].float().eval()
-        return model
-    except Exception:
-        try:
-            from ultralytics import YOLO
-            return YOLO(model_path)
-        except ImportError:
-            return None
+def load_model():
+    return YOLO("best_preprocessed.pt")
 
-model = load_perception_model()
 
-# ----------------- NAVIGATION -----------------
-st.title("⚡ EV Road Boundary Perception Platform")
-st.caption("Optimized Lightweight CPU Perception Engine")
+model = load_model()
 
-tab1, tab2, tab3 = st.tabs(["🖼️ Image Detection", "🎥 Video Inference", "🧊 3D Perception"])
+st.title("⚡ Electric Vehicle Road & Boundary Perception System")
+st.write(
+    "Real-time autonomous navigation, boundary detection, and dynamic 3D spatial modeling."
+)
 
-# ----------------- TAB 1: IMAGE DETECTION -----------------
+st.sidebar.header("Model Settings")
+conf_thresh = st.sidebar.slider("Confidence Threshold", 0.1, 1.0, 0.25, 0.05)
+
+tab1, tab2, tab3 = st.tabs(
+    ["🧊 3D EV Perception View", "📷 Image Detection", "🎥 Video Detection"]
+)
+
+# ----------------- TAB 1: 3D EV PERCEPTION VIEW -----------------
 with tab1:
-    st.subheader("Image Perception Pipeline")
-    uploaded_image = st.file_uploader("Upload Road Image", type=["jpg", "jpeg", "png"])
-    
-    col1, col2 = st.columns(2)
-    conf_thresh = st.slider("Confidence Threshold", 0.1, 1.0, 0.25, 0.05)
-    
-    if uploaded_image is not None:
-        image = Image.open(uploaded_image).convert("RGB")
-        img_np = np.array(image)
-        
-        with col1:
-            st.image(image, caption="Input Frame", use_container_width=True)
-            
-        with col2:
-            if st.button("Run Image Detection"):
-                with st.spinner("Processing frame..."):
-                    resized = cv2.resize(img_np, (640, 360))
-                    
-                    if model is not None and hasattr(model, "predict"):
-                        results = model.predict(source=resized, conf=conf_thresh, imgsz=320, verbose=False)
-                        annotated = results[0].plot()
-                    else:
-                        annotated = cv2.cvtColor(resized, cv2.COLOR_RGB2BGR)
-                        cv2.putText(annotated, "Perception Active", (20, 40),
-                                    cv2.FONT_HERSHEY_SIMPLEX, 1, (0, 210, 255), 2)
-                        annotated = cv2.cvtColor(annotated, cv2.COLOR_BGR2RGB)
-                    
-                    st.image(annotated, caption="Perception Output", use_container_width=True)
+    st.markdown("### 🧊 Live 3D Autonomous EV Navigation View")
 
-# ----------------- TAB 2: VIDEO INFERENCE -----------------
-with tab2:
-    st.subheader("Optimized Video Pipeline")
-    uploaded_video = st.file_uploader("Upload Road Video", type=["mp4", "avi", "mov"])
-    
-    if uploaded_video is not None:
-        tfile = tempfile.NamedTemporaryFile(delete=False, suffix='.mp4')
-        tfile.write(uploaded_video.read())
-        tfile.close()
-        
-        st.video(tfile.name)
-        
-        if st.button("Run Video Detection"):
-            st.info("Running CPU acceleration strategy (Resized to 480x270, processing 1 in 5 frames)...")
-            
-            cap = cv2.VideoCapture(tfile.name)
-            
-            raw_output_path = tempfile.NamedTemporaryFile(delete=False, suffix='.avi').name
-            web_output_path = tempfile.NamedTemporaryFile(delete=False, suffix='.mp4').name
-            
-            fourcc = cv2.VideoWriter_fourcc(*'XVID')
-            out = cv2.VideoWriter(raw_output_path, fourcc, 10.0, (480, 270))
-            
-            frame_count = 0
-            vid_start_time = time.time()
-            progress_bar = st.progress(0)
-            total_frames = int(cap.get(cv2.CAP_PROP_FRAME_COUNT)) or 100
-            
-            while cap.isOpened():
-                ret, frame = cap.read()
-                if not ret:
-                    break
-                
-                frame_count += 1
-                
-                # Frame Skip: Process 1 in 5 frames for high speed
-                if frame_count % 5 != 0:
-                    continue
-                    
-                # Downscale resolution to lighten CPU processing
-                frame_resized = cv2.resize(frame, (480, 270))
-                
-                if model is not None and hasattr(model, "predict"):
-                    results = model.predict(source=frame_resized, conf=conf_thresh, imgsz=320, verbose=False)
-                    proc_frame = results[0].plot()
-                else:
-                    proc_frame = frame_resized
-                    cv2.putText(proc_frame, f"Frame: {frame_count}", (10, 30),
-                                cv2.FONT_HERSHEY_SIMPLEX, 0.6, (0, 210, 255), 2)
-                
-                out.write(proc_frame)
-                progress_bar.progress(min(frame_count / total_frames, 1.0))
-                
-                # Periodically reclaim RAM
-                if frame_count % 15 == 0:
-                    del proc_frame
-                    gc.collect()
-            
-            cap.release()
-            out.release()
-            
-            # Ultrafast FFmpeg Encoding Pass
-            os.system(f"ffmpeg -y -i {raw_output_path} -vcodec libx264 -preset ultrafast -crf 32 {web_output_path}")
-            
-            vid_elapsed = round(time.time() - vid_start_time, 2)
-            st.success(f"⚡ Video processing complete in {vid_elapsed} seconds!")
-            
-            if os.path.exists(web_output_path):
-                st.video(web_output_path)
-            
-            # Temporary File Cleanup
-            for path in [tfile.name, raw_output_path, web_output_path]:
-                if os.path.exists(path):
-                    os.remove(path)
+    ev_speed = st.slider(
+        "Simulated EV Motion Depth",
+        min_value=0,
+        max_value=20,
+        value=10,
+        help="Adjust to simulate EV forward movement in 3D space.",
+    )
 
-# ----------------- TAB 3: 3D PERCEPTION -----------------
-with tab3:
-    st.subheader("3D Point Cloud Perception Sandbox")
-    x = np.linspace(-10, 10, 40)
-    y = np.linspace(0, 50, 40)
-    X, Y = np.meshgrid(x, y)
-    Z = np.sin(np.sqrt(X**2 + Y**2)) / 2
-    
-    fig = go.Figure(data=[go.Surface(z=Z, x=X, y=Y, colorscale='Viridis')])
-    fig.update_layout(margin=dict(l=0, r=0, b=0, t=40))
+    x_road = np.linspace(-6, 6, 40)
+    y_road = np.linspace(0, 60, 60)
+    X, Y = np.meshgrid(x_road, y_road)
+    Z = np.zeros_like(X)
+
+    fig = go.Figure()
+
+    # Ground plane
+    fig.add_trace(
+        go.Surface(
+            x=X,
+            y=Y,
+            z=Z,
+            colorscale=[[0, "#12161f"], [1, "#1e2530"]],
+            showscale=False,
+        )
+    )
+
+    # Left & Right Road Boundaries
+    y_line = np.linspace(0, 60, 60)
+    fig.add_trace(
+        go.Scatter3d(
+            x=[-4.5] * 60,
+            y=y_line,
+            z=[0.05] * 60,
+            mode="lines",
+            line=dict(color="#FF3366", width=8),
+            name="Left Boundary",
+        )
+    )
+    fig.add_trace(
+        go.Scatter3d(
+            x=[4.5] * 60,
+            y=y_line,
+            z=[0.05] * 60,
+            mode="lines",
+            line=dict(color="#FF3366", width=8),
+            name="Right Boundary",
+        )
+    )
+
+    # Center Lane Marker
+    fig.add_trace(
+        go.Scatter3d(
+            x=[0] * 60,
+            y=y_line,
+            z=[0.03] * 60,
+            mode="lines",
+            line=dict(color="#FFCC00", width=4, dash="dash"),
+            name="Center Lane",
+        )
+    )
+
+    cy = ev_speed
+
+    # Ego EV Marker
+    fig.add_trace(
+        go.Scatter3d(
+            x=[0],
+            y=[cy],
+            z=[0.5],
+            mode="markers+text",
+            marker=dict(size=10, color="#00D2FF"),
+            text=["⚡ Ego EV"],
+            textposition="top center",
+            name="Ego EV Position",
+        )
+    )
+
+    # Sensor Vision Field
+    sensor_x = [0, -3.5, 3.5, 0]
+    sensor_y = [cy, cy + 20, cy + 20, cy]
+    sensor_z = [0.5, 0.1, 0.1, 0.5]
+
+    fig.add_trace(
+        go.Scatter3d(
+            x=sensor_x,
+            y=sensor_y,
+            z=sensor_z,
+            mode="lines",
+            line=dict(color="#00FFFF", width=4),
+            name="Sensor Field",
+        )
+    )
+
+    fig.add_trace(
+        go.Mesh3d(
+            x=[0, -3.5, 3.5],
+            y=[cy, cy + 20, cy + 20],
+            z=[0.5, 0.1, 0.1],
+            color="#00FFFF",
+            opacity=0.2,
+            name="Detection Field",
+        )
+    )
+
+    # Surrounding Obstacles/Traffic
+    fig.add_trace(
+        go.Scatter3d(
+            x=[-2, 2.2],
+            y=[ev_speed + 15, ev_speed + 30],
+            z=[0.8, 0.8],
+            mode="markers+text",
+            marker=dict(size=14, color="#FF9900", symbol="diamond"),
+            text=["Vehicle 1", "Vehicle 2"],
+            textposition="top center",
+            name="Ahead Traffic",
+        )
+    )
+
+    fig.update_layout(
+        scene=dict(
+            xaxis=dict(title="Lateral (m)", backgroundcolor="#0E1117"),
+            yaxis=dict(title="Distance Ahead (m)", backgroundcolor="#0E1117"),
+            zaxis=dict(title="Elevation (m)", backgroundcolor="#0E1117"),
+            aspectratio=dict(x=1, y=2.5, z=0.5),
+            camera=dict(eye=dict(x=-0.8, y=-1.5, z=1.0)),
+        ),
+        paper_bgcolor="#0E1117",
+        height=550,
+        margin=dict(l=0, r=0, b=0, t=20),
+    )
+
     st.plotly_chart(fig, use_container_width=True)
+
+# ----------------- TAB 2: IMAGE DETECTION -----------------
+with tab2:
+    st.markdown("### 📷 Road Image Boundary Detection")
+    uploaded_image = st.file_uploader(
+        "Choose a road photo...", type=["jpg", "jpeg", "png"], key="img_upload"
+    )
+
+    if uploaded_image is not None:
+        image = Image.open(uploaded_image)
+        col1, col2 = st.columns(2)
+        with col1:
+            st.markdown("**Original Input**")
+            st.image(image, use_container_width=True)
+
+        if st.button("Run Image Boundary Detection", key="btn_img"):
+            img_start_time = time.time()
+            with st.spinner("⏳ Processing road boundaries..."):
+                results = model.predict(source=image, conf=conf_thresh)
+                res_plotted = results[0].plot()
+
+                img_elapsed = round(time.time() - img_start_time, 2)
+                with col2:
+                    st.markdown("**Processed Boundary Output**")
+                    st.image(res_plotted[..., ::-1], use_container_width=True)
+                st.success(
+                    f"⚡ Image processing complete in {img_elapsed} seconds!"
+                )
+
+# ----------------- TAB 3: VIDEO DETECTION -----------------
+with tab3:
+    st.markdown("### 🎥 Road Driving Video Inference")
+    uploaded_video = st.file_uploader(
+        "Upload Road Driving Video", type=["mp4", "avi", "mov"], key="vid_upload"
+    )
+
+    if uploaded_video is not None:
+        st.video(uploaded_video)
+
+        if st.button("Run Video Detection", key="btn_vid"):
+            vid_start_time = time.time()
+
+            with st.spinner("⏳ Processing video efficiently... Please wait."):
+                tfile = tempfile.NamedTemporaryFile(delete=False, suffix=".mp4")
+                tfile.write(uploaded_video.read())
+                tfile.close()
+
+                cap = cv2.VideoCapture(tfile.name)
+                web_output_path = "processed_output.mp4"
+
+                # Standardize export frame size to 640x360 to save CPU
+                out_w, out_h = 640, 360
+                fourcc = cv2.VideoWriter_fourcc(*"mp4v")
+                out = cv2.VideoWriter(web_output_path, fourcc, 10, (out_w, out_h))
+
+                frame_count = 0
+                while cap.isOpened():
+                    ret, frame = cap.read()
+                    if not ret:
+                        break
+
+                    frame_count += 1
+                    # Skip 2 out of 3 frames to lower CPU load by 66%
+                    if frame_count % 3 != 0:
+                        continue
+
+                    # Downscale frame for fast execution
+                    resized_frame = cv2.resize(frame, (out_w, out_h))
+
+                    results = model.predict(
+                        source=resized_frame,
+                        conf=conf_thresh,
+                        imgsz=320,
+                        verbose=False,
+                    )
+
+                    out.write(results[0].plot())
+
+                    del results
+                    if frame_count % 15 == 0:
+                        gc.collect()
+
+                cap.release()
+                out.release()
+                cv2.destroyAllWindows()
+
+                vid_elapsed = round(time.time() - vid_start_time, 2)
+
+                st.success(
+                    f"✅ Video processing complete in {vid_elapsed} seconds!"
+                )
+
+                with open(web_output_path, "rb") as vid_file:
+                    st.video(vid_file.read())
+
+                if os.path.exists(tfile.name):
+                    os.remove(tfile.name)
