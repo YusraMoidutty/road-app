@@ -1,8 +1,10 @@
 import gc
 import os
+import subprocess
 import tempfile
 import time
 import cv2
+import imageio_ffmpeg as ffmpeg
 import numpy as np
 import plotly.graph_objects as go
 import streamlit as st
@@ -242,12 +244,15 @@ with tab3:
                 tfile.close()
 
                 cap = cv2.VideoCapture(tfile.name)
-                web_output_path = "processed_output.mp4"
+                temp_output_path = "temp_processed.mp4"
+                web_output_path = "processed_h264.mp4"
 
-                # Standardize export frame size to 640x360 to save CPU
+                # Standardize export frame size to save CPU
                 out_w, out_h = 640, 360
                 fourcc = cv2.VideoWriter_fourcc(*"mp4v")
-                out = cv2.VideoWriter(web_output_path, fourcc, 10, (out_w, out_h))
+                out = cv2.VideoWriter(
+                    temp_output_path, fourcc, 10, (out_w, out_h)
+                )
 
                 frame_count = 0
                 while cap.isOpened():
@@ -256,7 +261,7 @@ with tab3:
                         break
 
                     frame_count += 1
-                    # Skip 2 out of 3 frames to lower CPU load by 66%
+                    # Skip 2 out of 3 frames to lower CPU load
                     if frame_count % 3 != 0:
                         continue
 
@@ -280,14 +285,36 @@ with tab3:
                 out.release()
                 cv2.destroyAllWindows()
 
+                # Transcode mp4v to web-playable H.264 using imageio-ffmpeg binary
+                ffmpeg_exe = ffmpeg.get_ffmpeg_exe()
+                subprocess.run(
+                    [
+                        ffmpeg_exe,
+                        "-y",
+                        "-i",
+                        temp_output_path,
+                        "-vcodec",
+                        "libx264",
+                        web_output_path,
+                    ],
+                    check=True,
+                )
+
                 vid_elapsed = round(time.time() - vid_start_time, 2)
 
                 st.success(
                     f"✅ Video processing complete in {vid_elapsed} seconds!"
                 )
 
+                # Render browser-compatible video
                 with open(web_output_path, "rb") as vid_file:
                     st.video(vid_file.read())
 
-                if os.path.exists(tfile.name):
-                    os.remove(tfile.name)
+                # Clean up temporary files
+                for file_path in [
+                    tfile.name,
+                    temp_output_path,
+                    web_output_path,
+                ]:
+                    if os.path.exists(file_path):
+                        os.remove(file_path)
