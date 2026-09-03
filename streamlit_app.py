@@ -62,7 +62,7 @@ with tab1:
     st.markdown("### 🧊 Live 3D Autonomous EV Navigation View")
 
     ev_speed = st.slider(
-        "Simulated EV Motion Depth",
+        "Simulated Electric Vehicle Motion Depth — Rotate with your mouse for a 3D experience.",
         min_value=0,
         max_value=20,
         value=10,
