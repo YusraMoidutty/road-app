@@ -6,7 +6,6 @@ import cv2
 import numpy as np
 import plotly.graph_objects as go
 import streamlit as st
-from moviepy.editor import VideoFileClip
 from PIL import Image
 from ultralytics import YOLO
 
@@ -15,7 +14,7 @@ st.set_page_config(
     page_title="EV Road Boundary Perception", page_icon="⚡", layout="wide"
 )
 
-# Custom button styling (Removed global header/footer hiding to prevent blank page crashes)
+# Custom button styling
 st.markdown(
     """
     <style>
@@ -241,14 +240,22 @@ with tab3:
                 tfile.close()
 
                 cap = cv2.VideoCapture(tfile.name)
-                raw_output_path = "raw_output.mp4"
                 web_output_path = "web_output.mp4"
 
                 out_w, out_h = 640, 360
-                fourcc = cv2.VideoWriter_fourcc(*"mp4v")
+
+                # 'avc1' encodes directly into web-playable H.264
+                fourcc = cv2.VideoWriter_fourcc(*"avc1")
                 out = cv2.VideoWriter(
-                    raw_output_path, fourcc, 10, (out_w, out_h)
+                    web_output_path, fourcc, 10, (out_w, out_h)
                 )
+
+                # Fallback to mp4v if avc1 is unsupported on the system
+                if not out.isOpened():
+                    fourcc = cv2.VideoWriter_fourcc(*"mp4v")
+                    out = cv2.VideoWriter(
+                        web_output_path, fourcc, 10, (out_w, out_h)
+                    )
 
                 frame_count = 0
                 while cap.isOpened():
@@ -279,25 +286,15 @@ with tab3:
                 out.release()
                 cv2.destroyAllWindows()
 
-                # Convert raw OpenCV file to H.264 web format using MoviePy
-                clip = VideoFileClip(raw_output_path)
-                clip.write_videofile(
-                    web_output_path, codec="libx264", audio=False, verbose=False
-                )
-                clip.close()
-
                 vid_elapsed = round(time.time() - vid_start_time, 2)
 
                 st.success(
                     f"✅ Video processing complete in {vid_elapsed} seconds!"
                 )
 
-                # Render HTML5 video
+                # Render HTML5 video output directly
                 with open(web_output_path, "rb") as vid_file:
                     st.video(vid_file.read())
 
-                # Clean up temporary raw video file
-                if os.path.exists(raw_output_path):
-                    os.remove(raw_output_path)
                 if os.path.exists(tfile.name):
                     os.remove(tfile.name)
