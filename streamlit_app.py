@@ -133,9 +133,9 @@ with tab1:
             z=[0.5],
             mode="markers+text",
             marker=dict(size=10, color="#00D2FF"),
-            text=["⚡ Ego EV"],
+            text=["⚡  EV"],
             textposition="top center",
-            name="Ego EV Position",
+            name=" EV Position",
         )
     )
 
